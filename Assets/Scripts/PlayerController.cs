@@ -5,15 +5,30 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour {
 
 	[SerializeField]
-	bool isGrounded;
-	bool onFirstJump;
+	LayerMask groundLayer;
+
+	[SerializeField]
+	bool isGrounded() {
+		Vector2 position = transform.position;
+		Vector2 down = Vector2.down;
+		float dist = 0.1f;
+
+		Debug.DrawRay(position, down, Color.green);
+		RaycastHit2D hit = Physics2D.Raycast(position, down, dist, groundLayer);
+		if (hit.collider != null) {
+			return true;
+		}
+
+		return false;
+	}
+	[SerializeField]
+	int numJumps = 0;
+	[SerializeField]
 	bool canDoubleJump;
 	float speed = 5;
 	Animator anim;
 	Rigidbody2D rb;
 
-	[SerializeField]
-	bool isJumping;
 	[SerializeField]
 	bool isRunning;
 	[SerializeField]
@@ -36,7 +51,11 @@ public class PlayerController : MonoBehaviour {
 	}
 
 	void FixedUpdate() {
-		//Freeze check
+		//Ground check for double jump
+		//if (isGrounded()) {
+		//	onFirstJump = false;
+		//}
+
 		//TODO: Testing
 		if ((Input.GetKeyDown(KeyCode.Q))) {
 			FreezePlayer(false);
@@ -45,12 +64,12 @@ public class PlayerController : MonoBehaviour {
 			canDoubleJump = true;
 		}
 
+		//Freeze check
 		if (playerFrozen) {
 			anim.SetFloat("Speed", 0);
 			anim.SetBool("SetJumping", false);
 			anim.SetBool("SetDigging", false);
 			anim.SetBool("SetAttacking", false);
-			isJumping = false;
 			isRunning = false;
 			isAttacking = false;
 			isDigging = false;
@@ -58,13 +77,13 @@ public class PlayerController : MonoBehaviour {
 			return;
 		}
 
-		//Button Check
+		//Interact
 		if ((Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W)) && atNPC) {
-			//Interact
 			NPC.BeginInteraction();
 			//TODO: Get NPC collider, do thing, unfreeze once complete
 		}
 
+		//Movement
 		if ((Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A)) && !isDigging) {
 			//Go left
 			anim.SetFloat("Speed", speed);
@@ -79,36 +98,36 @@ public class PlayerController : MonoBehaviour {
 			changeDirection("right");
 			transform.Translate(Vector3.right * speed * Time.deltaTime);
 		}
-		else if (isGrounded) {
+		else if (isGrounded()) {
 			anim.SetFloat("Speed", 0);
 			isRunning = false;
 		}
 
-
-		if (Input.GetKeyDown(KeyCode.Space) && !isDigging && !isAttacking && (isGrounded || (canDoubleJump && onFirstJump))) {
-			//Jump
-			isGrounded = false;
-			anim.SetBool("SetJumping", true);
-			rb.AddForce(new Vector2(0, 250));
-			isJumping = true;
-			if (!onFirstJump) {
-				onFirstJump = true;
+		//Jump
+		if (Input.GetKeyDown(KeyCode.Space) && !isDigging && !isAttacking) {
+			if (/*isGrounded() ||*/ numJumps < 1) { //Either on the ground, or fell off a platform and hasn't jumped yet
+				anim.SetBool("SetJumping", true);
+				rb.velocity = new Vector2(rb.velocity.x, 0);
+				rb.AddForce(new Vector2(0, 260));
+				numJumps = 1;
 			}
-			else {
+			else if (canDoubleJump && numJumps<=1) { //In the air and has only jumped once, if they are able to double jump
 				anim.SetBool("SetDoubleJump", true);
-				onFirstJump = false;
+				numJumps = 2; //Disables jumping after this
+				rb.velocity = new Vector2(rb.velocity.x, 0);
+				rb.AddForce(new Vector2(0, 260));
 			}
 		}
 
-		if (Input.GetKey(KeyCode.P) && !isAttacking && isGrounded) {
-			//Dig
+		//Dig
+		if (Input.GetKey(KeyCode.P) && !isAttacking && isGrounded()) {
 			isDigging = true;
 			anim.SetBool("SetDigging", true);
 			//TODO: Dig stuff, freeze player motion
 		}
 
+		//Attack
 		if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) && !isDigging) {
-			//Attack
 			isAttacking = true;
 			anim.SetBool("SetAttacking", true);
 		}
@@ -132,6 +151,29 @@ public class PlayerController : MonoBehaviour {
 			atNPC = true;
 			NPC = coll.gameObject.GetComponent<NPCController>();
 		}
+		else if (coll.gameObject.tag == "Enemy") {
+			if (isAttacking) {
+				coll.gameObject.GetComponent<DogController>().Kill();
+				Physics2D.IgnoreCollision(coll, GetComponent<BoxCollider2D>());
+			}
+			else {
+				if (coll.gameObject.GetComponent<DogController>().isDead) {
+					Physics2D.IgnoreCollision(coll, GetComponent<BoxCollider2D>());
+				}
+				else {
+					GetComponent<PlayerHealth>().TakeDamage(0.5f);
+				}
+			}
+		}
+	}
+
+	private void OnTriggerStay2D(Collider2D coll) {
+		if (coll.gameObject.tag == "Enemy") {
+			if (isAttacking) {
+				coll.gameObject.GetComponent<DogController>().Kill();
+				Physics2D.IgnoreCollision(coll, GetComponent<BoxCollider2D>());
+			}
+		}
 	}
 
 	private void OnTriggerExit2D(Collider2D coll) {
@@ -145,25 +187,10 @@ public class PlayerController : MonoBehaviour {
 
 	void OnCollisionEnter2D(Collision2D coll) {
 		if (coll.gameObject.tag == "Floor") {
-			isGrounded = true;
-			isJumping = false;
-			onFirstJump = false;
 			anim.SetBool("SetJumping", false);
 			anim.SetBool("SetDoubleJump", false);
-		}
-		else if (coll.gameObject.tag == "Enemy") {
-			if (isAttacking) {
-				coll.gameObject.GetComponent<DogController>().Kill();
-				Physics2D.IgnoreCollision(coll.collider, GetComponent<BoxCollider2D>());
-			}
-			else {
-				if (coll.gameObject.GetComponent<DogController>().isDead) {
-					Physics2D.IgnoreCollision(coll.collider, GetComponent<BoxCollider2D>());
-				}
-				else {
-					GetComponent<PlayerHealth>().TakeDamage(0.5f);
-					print("Ow!");
-				}
+			if (isGrounded()) {
+				numJumps = 0;
 			}
 		}
 		else {
@@ -172,11 +199,13 @@ public class PlayerController : MonoBehaviour {
 	}
 
 	private void OnCollisionStay2D(Collision2D collision) {
-		if (collision.collider.gameObject.tag == "Enemy") {
-			if (isAttacking) {
-				collision.collider.gameObject.GetComponent<DogController>().Kill();
-				Physics2D.IgnoreCollision(collision.collider, GetComponent<BoxCollider2D>());
+		//Backup for weird circumstances
+		if (collision.collider.gameObject.tag == "Floor") {
+			if (isGrounded()) {
+				numJumps = 0;
 			}
+			anim.SetBool("SetJumping", false);
+			anim.SetBool("SetDoubleJump", false);
 		}
 	}
 

@@ -4,14 +4,16 @@ using UnityEngine;
 
 public class PlayerHealth : MonoBehaviour {
 
+	UIController ui;
+
 	bool isDead = false;
 
-	float hearts = 3;
+	int hearts = 3;
 	float currentHealth = 3;
 
 	// Use this for initialization
 	void Start () {
-		
+		ui = FindObjectOfType<UIController>();
 	}
 	
 	// Update is called once per frame
@@ -23,14 +25,14 @@ public class PlayerHealth : MonoBehaviour {
 		if (!isDead) {
 			hearts++;
 			currentHealth++;
-			UIController.UpdateHearts(hearts, currentHealth);
+			ui.UpdateHearts(hearts, currentHealth);
 		}
 	}
 
 	public void TakeDamage(float damage) {
 		if (!isDead) {
 			currentHealth -= damage;
-			print(currentHealth);
+			ui.UpdateHearts(hearts, currentHealth);
 			if (currentHealth <= 0) {
 				isDead = true;
 				print("Oh noes!  I have died.");
